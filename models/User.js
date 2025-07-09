@@ -4,8 +4,8 @@ const crypto = require('crypto');
 
 class User {
   static async create(userData) {
-    const { username, email, password, verification_token } = userData;
-    console.log('User.create called with:', { username, email, verification_token });
+    const { username, email, password, verification_token} = userData;
+    console.log('User.create called with:', { username, email, verification_token});
     const hashedPassword = await bcrypt.hash(password, 10);
     const query = 'INSERT INTO users (username, email, password, verification_token) VALUES (?, ?, ?, ?)';
     const [result] = await pool.execute(query, [username, email, hashedPassword, verification_token]);
@@ -58,6 +58,21 @@ class User {
     const query = 'SELECT * FROM users WHERE id = ?';
     const [rows] = await pool.execute(query, [id]);
     return rows[0];
+  }
+
+  static async set2FACode(userId, code, expires) {
+    const query = 'UPDATE users SET twofa_code = ?, twofa_code_expires = ? WHERE id = ?';
+    await pool.execute(query, [code, expires, userId]);
+  }
+
+  static async verify2FACode(userId, code) {
+    const query = 'SELECT twofa_code, twofa_code_expires FROM users WHERE id = ?';
+    const [rows] = await pool.execute(query, [userId]);
+    if (!rows[0]) return false;
+    const { twofa_code, twofa_code_expires } = rows[0];
+    if (twofa_code !== code) return false;
+    if (new Date(twofa_code_expires) < new Date()) return false;
+    return true;
   }
 }
 

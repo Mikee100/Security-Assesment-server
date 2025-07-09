@@ -97,4 +97,58 @@ const getQuizResults = async (req, res) => {
   }
 };
 
-module.exports = { createQuestion, getAllQuestions, getLevels, getQuizResults }; 
+const getAllUsers = async (req, res) => {
+  try {
+    const [users] = await pool.execute('SELECT id, username, email, role, created_at, verified FROM users ORDER BY created_at DESC');
+    res.json({ users });
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const getAdminStats = async (req, res) => {
+  try {
+    const [[userStats]] = await pool.execute('SELECT COUNT(*) as total_users FROM users');
+    const [[quizStats]] = await pool.execute('SELECT COUNT(*) as total_quizzes FROM quizzes');
+    const [[attemptStats]] = await pool.execute('SELECT COUNT(*) as total_attempts FROM quiz_attempts');
+    const [[questionStats]] = await pool.execute('SELECT COUNT(*) as total_questions FROM quiz_questions');
+    res.json({
+      total_users: userStats.total_users,
+      total_quizzes: quizStats.total_quizzes,
+      total_attempts: attemptStats.total_attempts,
+      total_questions: questionStats.total_questions
+    });
+  } catch (error) {
+    console.error('Get admin stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const deleteQuestion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.execute('DELETE FROM quiz_questions WHERE id = ?', [id]);
+    res.json({ message: 'Question deleted successfully' });
+  } catch (error) {
+    console.error('Delete question error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const updateQuestion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { question, options, correct_answer, category, level_id } = req.body;
+    await pool.execute(
+      'UPDATE quiz_questions SET question = ?, options = ?, correct_answer = ?, category = ?, level_id = ? WHERE id = ?',
+      [question, JSON.stringify(options), correct_answer, category, level_id, id]
+    );
+    res.json({ message: 'Question updated successfully' });
+  } catch (error) {
+    console.error('Update question error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+module.exports = { createQuestion, getAllQuestions, getLevels, getQuizResults, getAllUsers, getAdminStats, deleteQuestion, updateQuestion }; 

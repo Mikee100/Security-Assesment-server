@@ -4,7 +4,7 @@ const { pool } = require('../config/db');
 
 const getQuestions = async (req, res) => {
   try {
-    const { category } = req.query;
+    const { category, limit } = req.query;
     let questions;
 
     if (category) {
@@ -13,8 +13,9 @@ const getQuestions = async (req, res) => {
       questions = await Quiz.getAllQuestions();
     }
 
-    // Limit to 10 questions per quiz
-    questions = questions.slice(0, 10);
+    // Limit to user-specified number of questions, default 10
+    const numQuestions = parseInt(limit) || 10;
+    questions = questions.slice(0, numQuestions);
 
     // Remove correct answers from questions sent to client
     const questionsForClient = questions.map(q => ({
@@ -34,7 +35,7 @@ const getQuestions = async (req, res) => {
 
 const submitQuiz = async (req, res) => {
   try {
-    const { answers, timeTaken } = req.body;
+    const { answers, timeTaken, level_id } = req.body;
     const userId = req.user.userId;
 
     if (!answers || !Array.isArray(answers)) {
@@ -68,11 +69,12 @@ const submitQuiz = async (req, res) => {
     // Save attempt
     const attemptData = {
       user_id: userId,
-      score,
-      total_questions: totalQuestions,
-      correct_answers: correctAnswers,
-      answers: results,
-      time_taken: timeTaken || 0
+      score: score ?? null,
+      total_questions: totalQuestions ?? null,
+      correct_answers: correctAnswers ?? null,
+      answers: results ?? null,
+      time_taken: timeTaken ?? null,
+      level_id: level_id ?? null, // Use level_id from req.body
     };
 
     const attemptId = await QuizAttempt.create(attemptData);
@@ -134,28 +136,11 @@ const getLeaderboard = async (req, res) => {
   }
 };
 
-const recordQuizAttempt = async (req, res) => {
-  try {
-    // For testing, use a fixed user_id (e.g., 1) or allow it from the request
-    const user_id = req.body.user_id || 1; // WARNING: Not secure for production!
-    const { score, total_questions, level_id, answers } = req.body;
-    await pool.execute(
-      'INSERT INTO quiz_attempts (user_id, score, total_questions, level_id, started_at, completed_at, answers) VALUES (?, ?, ?, ?, NOW(), NOW(), ?)',
-      [user_id, score, total_questions, level_id, JSON.stringify(answers)]
-    );
-    res.json({ message: 'Attempt recorded' });
-  } catch (error) {
-    console.error('Record quiz attempt error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
 module.exports = {
   getQuestions,
   submitQuiz,
   getCategories,
   getUserAttempts,
   getUserStats,
-  getLeaderboard,
-  recordQuizAttempt
+  getLeaderboard
 }; 

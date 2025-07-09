@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const crypto = require('crypto');
 const { sendMail } = require('../config/mailer');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
 
 const generateToken = (userId, role) => {
   return jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: '24h' });
@@ -9,10 +11,10 @@ const generateToken = (userId, role) => {
 
 const register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { fullName, email, password } = req.body;
 
     // Validation
-    if (!username || !email || !password) {
+    if (!fullName || !email || !password) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
@@ -29,8 +31,8 @@ const register = async (req, res) => {
     // Generate verification token
     const verification_token = crypto.randomBytes(32).toString('hex');
 
-    // Create new user (role defaults to 'user')
-    const userId = await User.create({ username, email, password, verification_token });
+    // Store fullName in username field for now
+    const userId = await User.create({ username: fullName, email, password, verification_token });
     const user = await User.findById(userId);
     const token = generateToken(userId, 'user');
 
@@ -39,7 +41,7 @@ const register = async (req, res) => {
     await sendMail({
       to: email,
       subject: 'Verify your email address',
-      html: `<h2>Welcome to Security Awareness, ${username}!</h2>
+      html: `<h2>Welcome to Security Awareness, ${fullName}!</h2>
         <p>To complete your registration, please verify your email address by clicking the link below:</p>
         <a href="${verifyUrl}" style="color: #2563eb;">Verify Email</a>
         <p>If you did not register, you can ignore this email.</p>`
@@ -77,6 +79,11 @@ const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Restrict login for unverified users
+    if (!user.verified) {
+      return res.status(403).json({ error: 'Account not verified. Please check your email to verify your account before logging in.' });
+    }
+
     const isValidPassword = await User.validatePassword(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -92,7 +99,6 @@ const login = async (req, res) => {
         });
       }
       // Verify 2FA code
-      const speakeasy = require('speakeasy');
       const verified = speakeasy.totp.verify({
         secret: user.twofa_secret,
         encoding: 'base32',
@@ -157,6 +163,45 @@ const verifyEmail = async (req, res) => {
     res.json({ message: 'Email verified successfully. You can now log in.' });
   } catch (error) {
     console.error('Email verification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const enable2FA = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findByIdFull(userId);
+    const secret = speakeasy.generateSecret({ name: `Security Awareness (${user.email})` });
+    await User.set2FASecret(userId, secret.base32);
+    const qrCodeDataURL = await qrcode.toDataURL(secret.otpauth_url);
+    res.json({ secret: secret.base32, qrCodeDataURL });
+  } catch (error) {
+    console.error('Enable 2FA error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const verify2FA = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { code } = req.body;
+    const user = await User.findByIdFull(userId);
+    if (!user || !user.twofa_secret) {
+      return res.status(400).json({ error: '2FA not set up.' });
+    }
+    const verified = speakeasy.totp.verify({
+      secret: user.twofa_secret,
+      encoding: 'base32',
+      token: code,
+      window: 1
+    });
+    if (!verified) {
+      return res.status(400).json({ error: 'Invalid 2FA code.' });
+    }
+    await User.enable2FA(userId);
+    res.json({ message: '2FA enabled successfully.' });
+  } catch (error) {
+    console.error('Verify 2FA error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

@@ -21,7 +21,4 @@ router.post('/submit', authenticateToken, submitQuiz);
 router.get('/attempts', authenticateToken, getUserAttempts);
 router.get('/stats', authenticateToken, getUserStats);
 
-// User submits quiz attempt
-router.post('/attempt', recordQuizAttempt);
-
 module.exports = router; 

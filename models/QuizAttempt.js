@@ -2,18 +2,30 @@ const { pool } = require('../config/db');
 
 class QuizAttempt {
   static async create(attemptData) {
-    const { user_id, score, total_questions, correct_answers, answers, time_taken } = attemptData;
-    const query = 'INSERT INTO quiz_attempts (user_id, score, total_questions, correct_answers, answers, time_taken) VALUES (?, ?, ?, ?, ?, ?)';
-    const [result] = await pool.execute(query, [user_id, score, total_questions, correct_answers, JSON.stringify(answers), time_taken]);
+    const { user_id, score, total_questions, correct_answers, level_id, time_taken, answers } = attemptData;
+    const query = `
+      INSERT INTO quiz_attempts 
+        (user_id, score, total_questions, correct_answers, level_id, started_at, completed_at, time_taken, answers)
+      VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+    `;
+    const [result] = await pool.execute(query, [
+      user_id,
+      score,              // e.g., 87.50
+      total_questions,
+      correct_answers,
+      level_id,
+      time_taken,
+      JSON.stringify(answers)
+    ]);
     return result.insertId;
   }
 
   static async getUserAttempts(userId) {
     const query = `
-      SELECT id, score, total_questions, correct_answers, time_taken, created_at 
+      SELECT id, score, total_questions, correct_answers, time_taken, started_at 
       FROM quiz_attempts 
       WHERE user_id = ? 
-      ORDER BY created_at DESC
+      ORDER BY started_at DESC
     `;
     const [rows] = await pool.execute(query, [userId]);
     return rows;
@@ -46,7 +58,7 @@ class QuizAttempt {
         qa.score,
         qa.total_questions,
         qa.correct_answers,
-        qa.created_at
+        qa.started_at
       FROM quiz_attempts qa
       JOIN users u ON qa.user_id = u.id
       ORDER BY qa.score DESC, qa.time_taken ASC
